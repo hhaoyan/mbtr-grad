@@ -93,6 +93,8 @@ class JaxFunc:
         if use_jacfwd:
             src = jacfwd(src, argnums)
         compiled = jit(src, static_argnums=static_argnums, device=JAX_DEV)
+        setattr(compiled, "_jax_dev", JAX_DEV)
+        setattr(compiled, "_jax_x64_enabled", jax_x64)
         return compiled
 
     @abstractmethod
