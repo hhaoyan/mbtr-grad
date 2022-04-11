@@ -11,7 +11,7 @@ __all__ = [
     "WeightFunc2BodyInvDist",
     "WeightFunc3BodyUnity",
     "WeightFunc3BodyExpInvDist",
-    "GeomFunc2BodyInvDistance",
+    "GeomFunc2BodyInvDist",
     "GeomFunc3BodyAngle",
     "GeomFunc3BodyCosAngle",
     "DistFuncGaussian",
@@ -133,13 +133,15 @@ class WeightFunc3BodyExpInvDist(ScalarFunc):
         return torch.exp(-norms / self.ls)
 
 
-class GeomFunc2BodyInvDistance(ScalarFunc):
+class GeomFunc2BodyInvDist(ScalarFunc):
     """
     Geometry function that takes the form of:
 
     .. math::
         G(R_i, R_j) = \\frac{1}{|R_i - R_j|}
     """
+
+    k = 2
 
     def _forward(self, r):
         return 1.0 / torch.linalg.norm(r[:, 0] - r[:, 1], dim=-1)
@@ -222,9 +224,9 @@ class DistFuncGaussian(nn.Module):
         self.const = float(1.0 / (sigma * np.sqrt(2.0)))
 
     def _check_shapes(self, val_range, geom_mean):
-        assert len(val_range) == 1, "val_range must be a 1d tensor."
+        assert len(val_range.shape) == 1, "val_range must be a 1d tensor."
         assert (
-            len(geom_mean) == 1
+            len(geom_mean.shape) == 1
         ), "geom_mean must be a 1d tensor with first dim as batch size."
 
     def forward(self, val_range, geom_mean, *, dx):

@@ -18,7 +18,7 @@ from mbtr_grad.gdml import (
     setup_einsum_engine,
 )
 from mbtr_grad.mbtr_python_torch import (
-    GeomFunc2BodyInvDistance,
+    GeomFunc2BodyInvDist,
     DistFuncGaussian,
     WeightFunc2BodyIdentity,
 )
@@ -75,7 +75,7 @@ class MBTRExperiment:
             "order": 2,
             "grid": np.linspace(0, 1.28, self.mbtr_size),
             "weightf": WeightFunc2BodyIdentity(),
-            "geomf": GeomFunc2BodyInvDistance(),
+            "geomf": GeomFunc2BodyInvDist(),
             "distf": DistFuncGaussian(sigma=mbtr_sig),
             "flatten": True,
         }
@@ -190,7 +190,7 @@ class MBTRExperiment:
             "order": 2,
             "grid": np.linspace(0, 1.28, self.mbtr_size),
             "weightf": WeightFunc2BodyIdentity(),
-            "geomf": GeomFunc2BodyInvDistance(),
+            "geomf": GeomFunc2BodyInvDist(),
             "distf": DistFuncGaussian(sigma=mbtr_sig),
             "flatten": True,
         }
