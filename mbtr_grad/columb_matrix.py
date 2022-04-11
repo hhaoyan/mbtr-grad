@@ -5,6 +5,10 @@ import torch
 
 from mbtr_grad.utils import to_gpu, to_torch_dtype
 
+__all__ = [
+    "cm_rep",
+]
+
 tril_indices = lru_cache(maxsize=8)(np.tril_indices)
 
 

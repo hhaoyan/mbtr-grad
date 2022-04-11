@@ -10,18 +10,15 @@ import jax.scipy as jsc
 import numpy as np
 from jax import jit, jacfwd, vmap, config
 
-from mbtr_md.constants import JAX_GPU_INDEX
-from mbtr_md.utils import batch_mode
+from mbtr_grad.constants import JAX_GPU_INDEX
+from mbtr_grad.utils import batch_mode
 
 jax_logger = logging.getLogger("JAX_MBTR")
 
+jax_x64 = True
 config.update("jax_enable_x64", True)
-jax_logger.info("Float64 enabled.")
 
-# FIXME: Currently, the functions are compiled to JAX_DEV. In the future, we
-# FIXME: may allow users to change devices and recompile all functions.
 if jax.default_backend() == "cpu":
-    jax_logger.warning("No CUDA devices detected, JAX may be slow.")
     JAX_DEV = jax.devices("cpu")[0]
 else:
     jax_gpu_dev = jax.devices("gpu")
@@ -30,22 +27,37 @@ else:
     else:
         JAX_DEV = jax_gpu_dev[0]
 
-    jax_logger.info("Using device %r.", JAX_DEV)
+
+def set_jax_device(dev):
+    jax_logger.info("Using device %r.", dev)
+    global JAX_DEV
+    JAX_DEV = dev
+
 
 __all__ = [
-    "weightf_inv_distance",
-    "weightf_exp_inv_norm",
-    "weightf_2body_identity",
-    "geomf_inv_distance",
-    "geomf_cos_angle",
-    "distf_gaussian",
+    "WeightFunc2BodyIdentity",
+    "WeightFunc2BodyInvDist",
+    "WeightFunc3BodyExpInvDist",
+    "GeomFunc2BodyInvDistance",
+    "GeomFunc3BodyCosAngle",
+    "DistFuncGaussian",
     "mbtr_python",
     "mbtr_python_div",
+    "set_jax_device",
 ]
 
 
-class WithDerivative:
-    """A callable function with derivatives."""
+def require_jit(static_argnums=None, argnums=None):
+    def decorator(fn):
+        setattr(fn, "_jax_static_argnums", static_argnums)
+        setattr(fn, "_jax_argnums", argnums)
+        return fn
+
+    return decorator
+
+
+class JaxFunc:
+    """A scalar function with derivatives."""
 
     _jax_grad = None
 
@@ -64,33 +76,56 @@ class WithDerivative:
         internals = tuple(sorted(internals))
         return hash(hash(type(self)) + hash(internals))
 
+    @staticmethod
+    def maybe_recompile(fn, src, use_jacfwd=False):
+        need_recompile = (
+            getattr(fn, "_jax_dev", None) != JAX_DEV
+            or getattr(fn, "_jax_x64_enabled", None) is not jax_x64
+        )
+        if not need_recompile:
+            return fn
+
+        jax_logger.debug(
+            "Recompiling function %r using device %r, x64: %r", src, JAX_DEV, jax_x64
+        )
+        static_argnums = getattr(fn, "_jax_static_argnums", None)
+        argnums = getattr(fn, "_jax_argnums", None)
+        if use_jacfwd:
+            src = jacfwd(src, argnums)
+        compiled = jit(src, static_argnums=static_argnums, device=JAX_DEV)
+        return compiled
+
     @abstractmethod
     def __call__(self, *args, **kwargs):
-        raise NotImplemented()
+        self._cached_forward = self.maybe_recompile(
+            getattr(self, "_cached_forward", ()), self._forward
+        )
+        return self._cached_forward(*args, **kwargs)
 
     def div(self, *args, **kwargs):
-        if self._jax_grad is None:
-            self._jax_grad = jit(
-                jacfwd(self.__call__), static_argnums=(0,), device=JAX_DEV
-            )
-        return self._jax_grad(*args, **kwargs)
+        self._cached_div = self.maybe_recompile(
+            getattr(self, "_cached_div", ()), self._forward
+        )
+        return self._cached_div(*args, **kwargs)
+
+    def _forward(self, *args):
+        raise NotImplemented()
+
+    def _div(self, *args):
+        raise NotImplemented()
 
 
-class weightf_2body_identity(WithDerivative):
+class WeightFunc2BodyIdentity(JaxFunc):
     """
     2-body weighting function of constant 1.
     """
 
-    @partial(jit, static_argnums=(0,), device=JAX_DEV)
-    def __call__(self, ri, rj):
+    @require_jit(static_argnums=(0,), argnums=(1, 2))
+    def _forward(self, ri, rj):
         return 1.0
 
-    _jax_grad = jit(
-        jacfwd(__call__, argnums=(1, 2)), static_argnums=(0,), device=JAX_DEV
-    )
 
-
-class weightf_inv_distance(WithDerivative):
+class WeightFunc2BodyInvDist(JaxFunc):
     """
     2-body weighting function that takes the form of:
 
@@ -98,16 +133,12 @@ class weightf_inv_distance(WithDerivative):
         w(R_i, R_j) = \\frac{1}{|R_i - R_j|}
     """
 
-    @partial(jit, static_argnums=(0,), device=JAX_DEV)
-    def __call__(self, ri, rj):
+    @require_jit(static_argnums=(0,), argnums=(1, 2))
+    def _forward(self, ri, rj):
         return 1.0 / jnp.linalg.norm(ri - rj) ** 2
 
-    _jax_grad = jit(
-        jacfwd(__call__, argnums=(1, 2)), static_argnums=(0,), device=JAX_DEV
-    )
 
-
-class weightf_exp_inv_norm(WithDerivative):
+class WeightFunc3BodyExpInvDist(JaxFunc):
     """
     3-body weighting function that takes the form of:
 
@@ -119,8 +150,8 @@ class weightf_exp_inv_norm(WithDerivative):
     def __init__(self, ls):
         self.ls = ls
 
-    @partial(jit, static_argnums=(0,), device=JAX_DEV)
-    def __call__(self, ri, rj, rk):
+    @require_jit(static_argnums=(0,), argnums=(1, 2, 3))
+    def _forward(self, ri, rj, rk):
         norms = (
             jnp.linalg.norm(ri - rj)
             + jnp.linalg.norm(ri - rk)
@@ -128,12 +159,8 @@ class weightf_exp_inv_norm(WithDerivative):
         )
         return jnp.exp(-norms / self.ls)
 
-    _jax_grad = jit(
-        jacfwd(__call__, argnums=(1, 2, 3)), static_argnums=(0,), device=JAX_DEV
-    )
 
-
-class geomf_inv_distance(WithDerivative):
+class GeomFunc2BodyInvDistance(JaxFunc):
     """
     Geometry function that takes the form of:
 
@@ -141,16 +168,12 @@ class geomf_inv_distance(WithDerivative):
         G(R_i, R_j) = \\frac{1}{|R_i - R_j|}
     """
 
-    @partial(jit, static_argnums=(0,), device=JAX_DEV)
-    def __call__(self, ri, rj):
+    @require_jit(static_argnums=(0,), argnums=(1, 2))
+    def _forward(self, ri, rj):
         return 1.0 / jnp.linalg.norm(ri - rj)
 
-    _jax_grad = jit(
-        jacfwd(__call__, argnums=(1, 2)), static_argnums=(0,), device=JAX_DEV
-    )
 
-
-class geomf_cos_angle(WithDerivative):
+class GeomFunc3BodyCosAngle(JaxFunc):
     """
     Geometry function of cosine function:
 
@@ -159,18 +182,14 @@ class geomf_cos_angle(WithDerivative):
         \\cdot|R_k-R_j|}
     """
 
-    @partial(jit, static_argnums=(0,), device=JAX_DEV)
-    def __call__(self, ra, rb, rc):
+    @require_jit(static_argnums=(0,), argnums=(1, 2, 3))
+    def _forward(self, ra, rb, rc):
         dotuv = jnp.dot(ra - rb, rc - rb)
         denominator = jnp.linalg.norm(ra - rb) * jnp.linalg.norm(rc - rb)
         return jnp.maximum(-1, jnp.minimum(1, dotuv / denominator))
 
-    _jax_grad = jit(
-        jacfwd(__call__, argnums=(1, 2, 3)), static_argnums=(0,), device=JAX_DEV
-    )
 
-
-class distf_gaussian(WithDerivative):
+class DistFuncGaussian(JaxFunc):
     """
     Gaussian distribution function.
     """
@@ -178,13 +197,11 @@ class distf_gaussian(WithDerivative):
     def __init__(self, sigma):
         self.const = float(1.0 / (sigma * np.sqrt(2.0)))
 
-    @partial(jit, static_argnums=(0,), device=JAX_DEV)
-    def __call__(self, val_range, geom_mean, *, dx):
+    @require_jit(static_argnums=(0,), argnums=2)
+    def _forward(self, val_range, geom_mean, *, dx):
         right = jsc.special.erf((val_range + dx - geom_mean) * self.const) / 2
         left = jsc.special.erf((val_range - geom_mean) * self.const) / 2
         return right - left
-
-    _jax_grad = jit(jacfwd(__call__, argnums=2), static_argnums=(0,), device=JAX_DEV)
 
 
 def _mbtr_python_one_system(
@@ -192,9 +209,9 @@ def _mbtr_python_one_system(
     z: "np.ndarray",
     grid: "np.ndarray",
     order: int,
-    weightf: WithDerivative,
-    distf: WithDerivative,
-    geomf: WithDerivative,
+    weightf: JaxFunc,
+    distf: JaxFunc,
+    geomf: JaxFunc,
 ):
     """
     Compute MBTR for a single system. See :func:`mbtr_python`.
@@ -224,9 +241,9 @@ def mbtr_python(
     r: "np.ndarray",
     grid: Union["np.ndarray", Tuple],
     order: int,
-    weightf: WithDerivative,
-    distf: WithDerivative,
-    geomf: WithDerivative,
+    weightf: JaxFunc,
+    distf: JaxFunc,
+    geomf: JaxFunc,
     flatten=False,
     batch_size=None,
 ) -> "np.ndarray":
@@ -273,9 +290,9 @@ def _mbtr_python_div_one_system(
     z: "np.ndarray",
     grid: "np.ndarray",
     order: int,
-    weightf: WithDerivative,
-    distf: WithDerivative,
-    geomf: WithDerivative,
+    weightf: JaxFunc,
+    distf: JaxFunc,
+    geomf: JaxFunc,
 ) -> "np.ndarray":
     """
     Compute MBTR derivative for one system. Also see :func:`mbtr_python_div`.
@@ -316,9 +333,9 @@ def mbtr_python_div(
     r: "np.ndarray",
     grid: Union["np.ndarray", Tuple],
     order: int,
-    weightf: WithDerivative,
-    distf: WithDerivative,
-    geomf: WithDerivative,
+    weightf: JaxFunc,
+    distf: JaxFunc,
+    geomf: JaxFunc,
     flatten=False,
     batch_size=None,
 ) -> "np.ndarray":

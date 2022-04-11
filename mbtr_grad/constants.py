@@ -3,6 +3,10 @@ from pathlib import Path
 
 import numpy
 
+__all__ = [
+    "PRECOMPUTED_PERMS",
+]
+
 JAX_GPU_INDEX = 0
 EINSUM_GPU_INDEX = 1
 CHOLESKY_GPU_INDEX = 2
