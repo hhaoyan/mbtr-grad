@@ -10,7 +10,7 @@ from tqdm import tqdm
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 # from mbtr_grad.cholesky import cholesky_inplace_upper
-from mbtr_grad.columb_matrix import cm_rep
+from mbtr_grad.coulomb_matrix import cm_rep
 from mbtr_grad.matern import MaternKernel
 from mbtr_grad.mbtr_python_torch import mbtr_python
 from mbtr_grad.utils import np_lru_cache
@@ -53,6 +53,11 @@ def setup_einsum_engine(engine: str = "cpu") -> None:
 
     if engine == "cpu":
         import opt_einsum as oe
+        'ij,ijkl,ijkl -> []'
+        # three tensors (one matrix), want to calculate sum_{ijkl} ij*ijkl*ijkl with broadcasting.
+        # 1. first: ij,ijkl -> ijkl
+        # 2. second: ijkl,ijkl -> []
+        # ijkl -> larger memory requirement.
 
         logger.info("Using cpu as the backend for einsum.")
         gdml_status.update(

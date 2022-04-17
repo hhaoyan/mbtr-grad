@@ -63,7 +63,11 @@ print(aspirin_rep.shape, aspirin_rep_div.shape)
 
 ### sGDML
 
-We demonstrate MBTR in sGDML using the MD17 (http://quantum-machine.org/gdml/) datasets to train symmetric gradient domain machine learning (sGDML) models.
+Training kernel models for forces requires a twice differentiable kernel function, which gives the potential function when integrated. 
+This is the basic idea behind symmetric gradient domain machine learning (sGDML). 
+You may read more information the papers by Chmiela et al. at this [link](http://quantum-machine.org/gdml/).
+
+We here use MBTR for training sGDML models using the MD17 dataset (http://quantum-machine.org/gdml/). 
 
 #### Prepare datasets
 
@@ -82,7 +86,7 @@ wget -nc http://quantum-machine.org/gdml/data/npz/toluene_dft.npz -O notebooks/d
 
 #### Running CM experiments
 
-We also include the code for training sGDML models using the Coulomb matrix (CM) representation.
+To get started, we train sGDML models using the Coulomb matrix (CM) representation:
 
 ```bash
 ./script_sgdml_cm_lr.py --output ./tmp/sgdml/cm
@@ -90,21 +94,38 @@ We also include the code for training sGDML models using the Coulomb matrix (CM)
 
 #### Running MBTR experiments
 
+The following script trains sGDML models using MBTR.
+
 ```bash
 ./script_sgdml_mbtr2_lr.py --use_gpu --output ./tmp/sgdml/cm
 ```
 
 #### Precomputed results
 
-The trained models and their performance of each of the eight MD17 datasets are also pre-computed and uploaded to figshare (https://figshare.com/XXX). 
+The trained models and their performance of each of the eight MD17 datasets are also pre-computed and uploaded to [figshare](https://figshare.com/ndownloader/files/34766953). 
 ```bash
 mkdir -p notebooks/results
-wget -O notebooks/results/sgdml.zip https://figshare.com/ndownloader/files/XXXX -o
+wget -O notebooks/results/sgdml.zip https://figshare.com/ndownloader/files/34766962 -o
 unzip -l notebooks/results/
 # Extract the files:
 # unzip notebooks/results/sgdml.zip -d notebooks/results/
 ```
 
+### MBTR energy models
+
+The following sections are pertain to the ML models that do not use derivatives in the original MBTR paper. Training and 
+validation of these models can be found in [this Jupyter notebook file](notebooks/mbtr.ipynb). Dataset and result files can also 
+be found at [this link](https://figshare.com/articles/dataset/Unified_Representation_of_Molecules_and_Crystals_for_Machine_Learning_-_Data_and_Models/19567324).
+
 ### Citation
 
-TODO.
+If you use this code in your project, please consider citing:
+
+```latex
+@article{huo2017unified,
+  title={Unified representation of molecules and crystals for machine learning},
+  author={Huo, Haoyan and Rupp, Matthias},
+  journal={arXiv preprint arXiv:1704.06439},
+  year={2017}
+}
+```
