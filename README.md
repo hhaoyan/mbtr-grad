@@ -1,3 +1,4 @@
+## This repo is archived, please see https://github.com/hhaoyan/mbtr
 ## Gradient domain many-body tensor representation (MBTR)
 
 This code extends the many-body tensor representation (MBTR) to include derivatives so that one could perform gradient-domain machine-learning.
